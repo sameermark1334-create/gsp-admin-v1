@@ -1,0 +1,9 @@
+{
+  "name": "GSP Master Admin",
+  "short_name": "GSP Admin",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#07070a",
+  "theme_color": "#07070a",
+  "icons": [{ "src": "logo.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }]
+}

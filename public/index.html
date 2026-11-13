@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#07070a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="GSP Admin">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+<title>GSP Master Admin</title>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<style>
+body{background:#07070a;color:#e5e7eb;-webkit-tap-highlight-color:transparent;padding-top:env(safe-area-inset-top);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;background:radial-gradient(520px 320px at 0 0,rgba(34,211,238,.14),transparent),radial-gradient(520px 320px at 100% 100%,rgba(232,121,249,.14),transparent)}
+.glass{background:rgba(255,255,255,.05);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.1);border-radius:16px}
+.btn{background:linear-gradient(90deg,#06b6d4,#d946ef);color:#000;font-weight:700;border-radius:12px;padding:.75rem 1rem;width:100%}
+.btn2,.btnr{border:1px solid rgba(34,211,238,.5);color:#22d3ee;border-radius:10px;padding:.4rem .75rem;font-size:.8rem}
+.btnr{border-color:rgba(244,63,94,.6);color:#fb7185}
+.chip{border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:.4rem .85rem;font-size:.8rem}
+.chip.on{background:rgba(34,211,238,.2);border-color:#22d3ee;color:#67e8f9}
+input,select{background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:.65rem;width:100%;color:#fff;font-size:16px;display:block}
+input:focus,select:focus,button:focus-visible{outline:2px solid #22d3ee;outline-offset:1px}
+pre{background:rgba(0,0,0,.5);border-radius:10px;padding:.7rem;font-size:.72rem;overflow-x:auto;color:#a5f3fc;white-space:pre}
+nav{position:fixed;bottom:0;left:0;right:0;z-index:20;background:rgba(7,7,10,.92);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border-top:1px solid rgba(34,211,238,.25);padding-bottom:env(safe-area-inset-bottom);display:grid;grid-template-columns:repeat(4,1fr)}
+nav button{padding:.7rem 0 .55rem;font-size:.72rem;color:#9ca3af}
+nav button.on{color:#22d3ee}
+nav button span{display:block;font-size:1.3rem}
+.bd{font-size:.68rem;border-radius:999px;padding:.1rem .55rem;border:1px solid}
+</style>
+</head>
+<body>
+
+<div id="login" class="min-h-screen flex flex-col items-center justify-center p-6 relative">
+  <img src="logo.png" alt="GSP" class="w-44 h-44 rounded-3xl mb-6">
+  <h1 class="text-xl font-bold">Master Admin</h1>
+  <p class="text-sm text-gray-400 mb-5">Enter your PIN to unlock</p>
+  <div class="w-full max-w-xs">
+    <input id="pin" type="password" autocomplete="current-password" placeholder="PIN or password" class="mb-3 text-center" onkeydown="if(event.key==='Enter')unlock()">
+    <button class="btn" onclick="unlock()">Unlock</button>
+    <p id="lerr" class="text-rose-400 text-sm text-center mt-3"></p>
+  </div>
+</div>
+
+<div id="app" class="hidden relative pb-28">
+  <header class="flex items-center justify-between p-4">
+    <div class="flex items-center gap-3"><img src="logo.png" alt="" class="w-10 h-10 rounded-xl"><b>GSP Admin</b></div>
+    <button class="btn2" onclick="doLock()">Lock</button>
+  </header>
+  <main id="main" class="px-4 space-y-3"></main>
+  <nav>
+    <button data-t="home" onclick="go('home')"><span>🏠</span>Home</button>
+    <button data-t="svc" onclick="go('svc')"><span>🧩</span>Services</button>
+    <button data-t="res" onclick="go('res')"><span>👥</span>Resellers</button>
+    <button data-t="logs" onclick="go('logs')"><span>📜</span>Logs</button>
+  </nav>
+</div>
+
+<div id="sheet" class="hidden fixed inset-0 z-50 bg-black/70 flex items-end" onclick="if(event.target===this)closeSheet()">
+  <div id="sheetBody" class="w-full max-h-[88vh] overflow-y-auto p-4 pb-8 glass" style="background:#0d0d14;border-radius:20px 20px 0 0"></div>
+</div>
+<div id="toast" class="hidden fixed left-1/2 -translate-x-1/2 z-[60] glass px-4 py-2 text-sm" style="bottom:110px"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = t => t ? new Date(t).toLocaleString() : '-';
+const dl = s => s % 86400 === 0 ? s / 86400 + ' d' : s % 3600 === 0 ? s / 3600 + ' h' : s / 60 + ' min';
+let tab = 'home', svc = null, filter = 'all', logRs = '';
+const G = { v: 1, u: 'days', count: 5, single: false, out: [] };
+const PRESETS = [['15 Mins',15,'minutes'],['1 Hour',1,'hours'],['1 Day',1,'days'],['7 Days',7,'days'],['30 Days',30,'days']];
+const REASONS = ['Cheap Price / Unauthorized Discount','Payment Fraud','Terms Violation','Key Sharing / Resale'];
+const COL = { active:'#22d3ee', valid:'#22d3ee', ok:'#22d3ee', used:'#facc15', expired:'#fb923c', banned:'#fb7185', invalid:'#fb7185', quota_exceeded:'#fb7185' };
+const badge = s => `<span class="bd" style="color:${COL[s]||'#9ca3af'};border-color:${COL[s]||'#9ca3af'}">${esc(s)}</span>`;
+
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.remove('hidden');clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.add('hidden'),2200);}
+function sheet(h){$('#sheetBody').innerHTML=h;$('#sheet').classList.remove('hidden');}
+function closeSheet(){$('#sheet').classList.add('hidden');}
+function cp(t){(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).catch(()=>{const a=document.createElement('textarea');a.value=t;a.style.cssText='position:fixed;opacity:0';document.body.appendChild(a);a.select();document.execCommand('copy');a.remove();}).then(()=>toast('Copied'));}
+async function api(p,method='GET',body){
+  const r=await fetch(p,{method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
+  const j=await r.json().catch(()=>({}));
+  if(r.status===401&&p!=='/admin/login'){showLogin();throw new Error('Locked');}
+  if(!r.ok)throw new Error(j.error||'Something went wrong');
+  return j;
+}
+
+// ----- Login, lock, idle timer -----
+function showLogin(){closeSheet();$('#app').classList.add('hidden');$('#login').classList.remove('hidden');$('#pin').value='';}
+function showApp(){$('#login').classList.add('hidden');$('#app').classList.remove('hidden');render();bump();}
+async function unlock(){
+  try{await api('/admin/login','POST',{pin:$('#pin').value});$('#lerr').textContent='';showApp();}
+  catch(e){$('#lerr').textContent=e.message;}
+}
+async function doLock(){try{await fetch('/admin/logout',{method:'POST'});}catch(e){}showLogin();}
+let idle;function bump(){clearTimeout(idle);idle=setTimeout(doLock,5*60000);}
+['click','touchstart','keydown'].forEach(e=>addEventListener(e,bump,{passive:true}));
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!$('#app').classList.contains('hidden'))api('/admin/session').catch(()=>{});});
+
+// ----- Navigation -----
+function go(t){tab=t;svc=null;logRs='';render();}
+async function render(){
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.t===tab));
+  try{await({home:vHome,svc:()=>svc?vDetail():vServices(),res:vRes,logs:vLogs}[tab])();}
+  catch(e){if(e.message!=='Locked')$('#main').innerHTML=`<p class="text-rose-400">${esc(e.message)}</p>`;}
+}
+
+// ----- Home -----
+async function vHome(){
+  const s=await api('/admin/stats');
+  $('#main').innerHTML=`<div class="grid grid-cols-2 gap-3">${[['Services',s.services],['Total keys',s.keys],['Banned keys',s.banned],['Active resellers',s.resellers],['API calls (24h)',s.calls]].map(([a,b])=>`<div class="glass p-4"><div class="text-xs text-gray-400">${a}</div><div class="text-3xl font-bold text-cyan-300">${b}</div></div>`).join('')}</div>
+  <button class="btn" onclick="go('svc');addSvc()">+ Add New Service / Product</button>`;
+}
+
+// ----- Services -----
+async function vServices(){
+  const l=await api('/admin/services');
+  $('#main').innerHTML=`<button class="btn" onclick="addSvc()">+ Add New Service / Product</button>`+(l.length?l.map(s=>`<div class="glass p-4" onclick="openSvc('${s.id}')"><div class="flex justify-between items-center"><b>${esc(s.name)}</b>${badge(s.active?'active':'banned').replace('banned','disabled')}</div><div class="text-xs text-gray-400 mt-1">${esc(s.description)||'No description'}</div><div class="text-xs mt-2 text-cyan-300">${s.keys} keys · ID ${s.id}</div></div>`).join(''):'<p class="text-gray-400 text-center py-8">No services yet. Add your first one.</p>');
+}
+function addSvc(){sheet(`<h3 class="font-bold mb-3">New Service / Product</h3><input id="sn" placeholder="Name (example: Premium Panel)" maxlength="60" class="mb-2"><input id="sd" placeholder="Description (optional)" maxlength="120" class="mb-3"><button class="btn" onclick="saveSvc()">Create service and API</button>`);}
+async function saveSvc(){try{const r=await api('/admin/services','POST',{name:$('#sn').value,description:$('#sd').value});closeSheet();toast('Service created');tab='svc';openSvc(r.id);}catch(e){toast(e.message);}}
+function openSvc(id){svc=id;tab='svc';filter='all';G.out=[];render();}
+
+const pre=(t,x)=>`<div class="flex justify-between items-center mt-3 mb-1"><span class="text-xs text-gray-400">${t}</span><button class="btn2" data-t="${esc(x)}" onclick="cp(this.dataset.t)">Copy</button></div><pre>${esc(x)}</pre>`;
+const effStatus=k=>k.status==='active'&&k.expires_at&&Date.now()>k.expires_at?'expired':k.status;
+
+async function vDetail(){
+  const [s,keys]=await Promise.all([api('/admin/services/'+svc),api(`/admin/services/${svc}/keys?status=${filter}`)]);
+  const base=`${location.origin}/api/v1/${s.id}`;
+  const hdr=`  -H "X-API-Key: ${s.api_key}" \\\n  -H "Content-Type: application/json"`;
+  const vReq={key:'GSP-XXXX-XXXX-XXXX'}, gReq={count:5,duration:{value:1,unit:'days'},single_use:false};
+  const resp={status:'valid | invalid | expired | used | banned',ban_reason:'only when status is banned',expires_at:'2026-12-31T00:00:00.000Z'};
+  $('#main').innerHTML=`
+  <button class="btn2" onclick="go('svc')">‹ All services</button>
+  <div class="glass p-4"><div class="flex justify-between items-center"><b class="text-lg">${esc(s.name)}</b>${badge(s.active?'active':'banned').replace('banned','disabled')}</div>
+    <div class="text-xs text-gray-400 mt-1">Service ID: ${s.id}</div>
+    <div class="text-xs text-gray-400 mt-3">Secret API key (keep private)</div>
+    <div class="flex gap-2 mt-1 items-center"><code class="text-fuchsia-300 text-xs break-all flex-1" id="sk">gsp_live_••••••••••••</code><button class="btn2" onclick="$('#sk').textContent='${s.api_key}'">Show</button><button class="btn2" data-t="${s.api_key}" onclick="cp(this.dataset.t)">Copy</button></div>
+    <div class="flex gap-2 mt-3"><button class="btnr" onclick="rotate()">Change API key</button><button class="btnr" onclick="toggleSvc()">${s.active?'Disable service':'Enable service'}</button></div>
+  </div>
+  <details class="glass p-4"><summary class="font-bold cursor-pointer">API endpoints and examples</summary>
+    <p class="text-xs text-gray-400 mt-2">Call these from your own server. Never put the secret key in public website code.</p>
+    ${pre('Verify endpoint (POST)',base+'/verify')}${pre('Generate endpoint (POST)',base+'/generate')}
+    ${pre('cURL: verify a key',`curl -X POST ${base}/verify \\\n${hdr} \\\n  -d '${JSON.stringify(vReq)}'`)}
+    ${pre('cURL: generate keys',`curl -X POST ${base}/generate \\\n${hdr} \\\n  -d '${JSON.stringify(gReq)}'`)}
+    ${pre('JSON body: verify',JSON.stringify(vReq,null,2))}${pre('JSON body: generate',JSON.stringify(gReq,null,2))}
+    ${pre('JSON response: verify',JSON.stringify(resp,null,2))}
+  </details>
+  <div class="glass p-4"><b>Generate keys</b>
+    <div class="flex flex-wrap gap-2 mt-3" id="pre">${PRESETS.map(([l,v,u])=>`<button class="chip ${G.v===v&&G.u===u?'on':''}" data-v="${v}" data-u="${u}" onclick="setD(${v},'${u}')">${l}</button>`).join('')}</div>
+    <div class="flex gap-2 mt-3"><input id="gv" type="number" min="1" value="${G.v}" oninput="G.v=+this.value;hl()"><select id="gu" onchange="G.u=this.value;hl()">${['minutes','hours','days'].map(u=>`<option ${G.u===u?'selected':''}>${u}</option>`).join('')}</select></div>
+    <div class="text-xs text-gray-400 mt-3">How many keys (1 to 50)</div>
+    <input id="gc" type="number" min="1" max="50" value="${G.count}" oninput="G.count=+this.value" class="mt-1">
+    <label class="flex items-center gap-3 mt-3 text-sm"><input type="checkbox" style="width:22px;height:22px" ${G.single?'checked':''} onchange="G.single=this.checked"> One-time login (key stops working after its first check)</label>
+    <button class="btn mt-4" onclick="gen()">Generate keys</button>
+    ${G.out.length?`<div class="mt-3"><div class="flex justify-between items-center mb-1"><span class="text-xs text-gray-400">${G.out.length} new key(s)</span><button class="btn2" onclick="cp(G.out.join('\\n'))">Copy all</button></div><pre>${esc(G.out.join('\n'))}</pre></div>`:''}
+  </div>
+  <div class="flex gap-2 flex-wrap">${['all','active','used','banned'].map(f=>`<button class="chip ${filter===f?'on':''}" onclick="filter='${f}';render()">${f}</button>`).join('')}</div>
+  ${keys.length?keys.map(k=>`<div class="glass p-3"><div class="flex justify-between items-center"><code class="text-cyan-300 text-sm">${esc(k.key)}</code>${badge(effStatus(k))}</div>
+    <div class="text-xs text-gray-400 mt-1">${dl(k.duration_seconds)}${k.single_use?' · one-time':''} · ${k.expires_at?'expires '+fmt(k.expires_at):'timer starts on first use'}</div>
+    ${k.status==='banned'?`<div class="text-xs text-rose-300 mt-1">Ban reason: ${esc(k.ban_reason)}</div>`:''}
+    <div class="flex gap-2 mt-2"><button class="btn2" data-t="${esc(k.key)}" onclick="cp(this.dataset.t)">Copy</button>${k.status==='banned'?`<button class="btn2" onclick="unban('${k.id}')">Unban</button>`:`<button class="btnr" onclick="banSheet('${k.id}')">Ban / Revoke</button>`}</div></div>`).join(''):'<p class="text-gray-400 text-center py-4">No keys here yet.</p>'}`;
+}
+function hl(){document.querySelectorAll('#pre .chip').forEach(c=>c.classList.toggle('on',+c.dataset.v===G.v&&c.dataset.u===G.u));}
+function setD(v,u){G.v=v;G.u=u;$('#gv').value=v;$('#gu').value=u;hl();}
+async function gen(){try{if(!(G.count>=1&&G.count<=50))return toast('Choose 1 to 50 keys');if(!(G.v>=1))return toast('Enter a duration');const r=await api(`/admin/services/${svc}/keys`,'POST',{count:G.count,duration:{value:G.v,unit:G.u},single_use:G.single});G.out=r.keys;render();}catch(e){toast(e.message);}}
+async function rotate(){if(!confirm('The old API key stops working right away. Continue?'))return;await api(`/admin/services/${svc}/rotate`,'POST');toast('New API key created');render();}
+async function toggleSvc(){await api(`/admin/services/${svc}/toggle`,'POST');render();}
+
+// ----- Ban system -----
+function banSheet(id){sheet(`<h3 class="font-bold mb-3">Ban / Revoke key</h3><p class="text-xs text-gray-400 mb-3">Pick a reason or write your own. The API will return it for this key.</p><div class="flex flex-wrap gap-2 mb-3">${REASONS.map(r=>`<button class="chip" data-t="${esc(r)}" onclick="pickR(this)">${esc(r)}</button>`).join('')}</div><input id="br" placeholder="Custom reason" maxlength="200" class="mb-3"><button class="btn" style="background:#e11d48;color:#fff" onclick="doBan('${id}')">Confirm ban</button>`);}
+function pickR(b){document.querySelectorAll('#sheetBody .chip').forEach(c=>c.classList.remove('on'));b.classList.add('on');$('#br').value=b.dataset.t;}
+async function doBan(id){const r=$('#br').value.trim();if(!r)return toast('Ban reason is required');try{await api(`/admin/keys/${id}/ban`,'POST',{reason:r});closeSheet();toast('Key banned');render();}catch(e){toast(e.message);}}
+async function unban(id){await api(`/admin/keys/${id}/unban`,'POST');toast('Key unbanned');render();}
+
+// ----- Resellers -----
+async function vRes(){
+  const r=await api('/admin/resellers');
+  $('#main').innerHTML=`<button class="btn" onclick="addRes()">+ New Reseller Token</button>`+(r.length?r.map(x=>{const p=Math.min(100,Math.round(x.keys_used/x.max_keys*100));return `<div class="glass p-3"><div class="flex justify-between items-center"><b>${esc(x.name)}</b>${badge(x.active?'active':'banned').replace('banned','revoked')}</div><div class="text-xs text-gray-400">${esc(x.service_name)} · ${esc(x.token_prefix)}…</div><div class="h-2 bg-white/10 rounded mt-2"><div class="h-2 rounded" style="width:${p}%;background:linear-gradient(90deg,#22d3ee,#e879f9)"></div></div><div class="text-xs mt-1">${x.keys_used} of ${x.max_keys} keys used</div><div class="flex gap-2 mt-2"><button class="btn2" onclick="tab='logs';logRs='${x.id}';render()">Usage logs</button>${x.active?`<button class="btnr" onclick="rsT('${x.id}','revoke')">Kill switch</button>`:`<button class="btn2" onclick="rsT('${x.id}','restore')">Restore access</button>`}</div></div>`;}).join(''):'<p class="text-gray-400 text-center py-8">No resellers yet.</p>');
+}
+async function addRes(){
+  const s=await api('/admin/services');if(!s.length)return toast('Create a service first');
+  sheet(`<h3 class="font-bold mb-3">New Reseller Token</h3><select id="rs" class="mb-2">${s.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select><input id="rn" placeholder="Reseller name" maxlength="60" class="mb-2"><div class="text-xs text-gray-400 mb-1">Maximum keys they can generate</div><input id="rm" type="number" min="1" value="100" class="mb-3"><button class="btn" onclick="saveRes()">Create token</button>`);
+}
+async function saveRes(){try{const r=await api('/admin/resellers','POST',{service_id:$('#rs').value,name:$('#rn').value,max_keys:+$('#rm').value});sheet(`<h3 class="font-bold mb-2">Reseller token</h3><p class="text-xs text-rose-300 mb-2">Copy it now. It is shown only once.</p><pre style="white-space:pre-wrap;word-break:break-all">${esc(r.token)}</pre><button class="btn mt-3" data-t="${esc(r.token)}" onclick="cp(this.dataset.t)">Copy token</button><p class="text-xs text-gray-400 mt-3">The reseller sends it as the X-API-Key header to the service's /generate and /verify endpoints.</p>`);render();}catch(e){toast(e.message);}}
+async function rsT(id,a){if(a==='revoke'&&!confirm('Cut off this reseller right now?'))return;await api(`/admin/resellers/${id}/${a}`,'POST');render();}
+
+// ----- Logs -----
+async function vLogs(){
+  const l=await api('/admin/logs'+(logRs?'?reseller='+logRs:''));
+  $('#main').innerHTML=(logRs?`<button class="btn2" onclick="logRs='';render()">‹ Show all logs</button>`:'<h2 class="font-bold">Latest API activity</h2>')+(l.length?l.map(x=>`<div class="glass p-3"><div class="flex justify-between items-center"><b class="text-sm">${esc(x.action)}</b>${badge(x.result)}</div><div class="text-xs text-gray-400 mt-1">${esc(x.service_name||'')} · ${x.reseller_name?esc(x.reseller_name):'master key'} · ${esc(x.ip)}</div><div class="text-xs text-gray-500">${fmt(x.ts)}${x.detail?' · '+esc(x.detail):''}</div></div>`).join(''):'<p class="text-gray-400 text-center py-8">No activity yet.</p>');
+}
+
+// ----- Start -----
+api('/admin/session').then(showApp).catch(showLogin);
+</script>
+</body>
+</html>
